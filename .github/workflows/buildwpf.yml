@@ -1,0 +1,39 @@
+name: Build Campus-Midnight-WPF.exe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'wpf/**'
+      - '.github/workflows/build-wpf.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish one self-contained exe (no .NET install needed to run it)
+        run: dotnet publish wpf/CampusMidnight.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist-wpf
+
+      - name: Keep the exe as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Campus-Midnight-WPF
+          path: dist-wpf/Campus-Midnight-WPF.exe
+
+      - name: Publish it as the "wpf-latest" release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete wpf-latest --yes --cleanup-tag 2>$null
+          $global:LASTEXITCODE = 0
+          gh release create wpf-latest dist-wpf/Campus-Midnight-WPF.exe --title "Campus Midnight WPF (preview build)" --notes "New WPF version. Self-contained, no .NET install needed. Uses the same settings as the WinForms app."
