@@ -119,3 +119,8 @@ themes, GPA/number options, pictures, refresh interval), Diagnostics.
 Not ported yet (still in the WinForms app): setup wizard / grid editor, crop tool, Tools page (what-if,
 charts, exports), Inbox, Docs, tray notifications, sidebar editor, saved-schedule editor.
 This code has not been compiled by me (no compiler in my sandbox). Send me any build errors and I will fix them.
+
+WPF update: opens maximized; class and assignment details open in their own windows (click a class tile,
+a class in a day list, or any assignment); new Tools page (what-if calculator, due-next-14-days and
+score charts with hover, score trend, CSV and calendar exports); sidebar labels hide when collapsed;
+single-file exe no longer compressed (faster start).

@@ -42,6 +42,7 @@ namespace CampusMidnight
                         case "grades": page = openCourse != null ? PageCourse(openCourse) : PageGrades(); break;
                         case "assigns": page = PageAssigns(); break;
                         case "sched": page = PageSched(); break;
+                        case "tools": page = PageTools(); break;
                         case "settings": page = PageSettings(); break;
                         case "diag": page = PageDiag(); break;
                         default: page = PageHome(); break;
@@ -170,12 +171,23 @@ namespace CampusMidnight
             Border row = new Border();
             row.CornerRadius = new CornerRadius(9);
             row.Padding = new Thickness(8, 5, 8, 5);
-            if (live) row.SetResourceReference(Border.BackgroundProperty, "AccDeep");
             row.Child = g;
+            if (s.C != null) Hover(row, live ? "AccDeep" : null, live ? "AccSoft" : "Bg3", delegate { OpenCourse(s.C); });
+            else if (live) row.SetResourceReference(Border.BackgroundProperty, "AccDeep");
             return row;
         }
 
         UIElement AssignRow(Assign a, bool showCourse)
+        {
+            Border wrapB = new Border();
+            wrapB.CornerRadius = new CornerRadius(9);
+            wrapB.Padding = new Thickness(8, 0, 8, 0);
+            wrapB.Child = AssignGrid(a, showCourse);
+            Hover(wrapB, null, "Bg3", delegate { OpenAssign(a); });
+            return wrapB;
+        }
+
+        UIElement AssignGrid(Assign a, bool showCourse)
         {
             Grid g = UI.Cols(0, 1, 0);
             g.Margin = new Thickness(0, 4, 0, 4);
@@ -230,9 +242,9 @@ namespace CampusMidnight
         static void Hover(Border b, string rest, string over, Action click)
         {
             b.Cursor = Cursors.Hand;
-            b.SetResourceReference(Border.BackgroundProperty, rest);
+            if (rest == null) b.Background = Brushes.Transparent; else b.SetResourceReference(Border.BackgroundProperty, rest);
             b.MouseEnter += delegate { b.SetResourceReference(Border.BackgroundProperty, over); };
-            b.MouseLeave += delegate { b.SetResourceReference(Border.BackgroundProperty, rest); };
+            b.MouseLeave += delegate { if (rest == null) b.Background = Brushes.Transparent; else b.SetResourceReference(Border.BackgroundProperty, rest); };
             b.MouseLeftButtonUp += delegate { click(); };
         }
 
@@ -394,7 +406,7 @@ namespace CampusMidnight
                 t.Children.Add(UI.Meter(c.Percent.HasValue ? c.Percent.Value : 0, gc));
                 Border card = UI.Card(t, 18);
                 card.Margin = new Thickness(0, 0, 14, 14);
-                Hover(card, "Bg2", "Bg3", delegate { openCourse = cc; ShowView(true); });
+                Hover(card, "Bg2", "Bg3", delegate { OpenCourse(cc); });
                 wrap.Children.Add(card);
             }
             if (cs.Count == 0) return Body(UI.Wrap(Rows.NoData, 13.5, "T3"));

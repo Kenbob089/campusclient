@@ -42,6 +42,7 @@ namespace CampusMidnight
         Border sidebar;
         ContentControl pageHost;
         TextBlock titleText, stampBlock;
+        readonly List<UIElement> railLabels = new List<UIElement>();
         readonly Dictionary<string, Button> navButtons = new Dictionary<string, Button>();
 
         static readonly string[][] Nav = new string[][]
@@ -59,7 +60,8 @@ namespace CampusMidnight
         {
             cfg = c;
             Title = "Campus Midnight";
-            Width = 1180; Height = 780;
+            Width = 1280; Height = 820;
+            WindowState = WindowState.Maximized;
             MinWidth = 860; MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             FontFamily = new FontFamily("Segoe UI");
@@ -388,6 +390,7 @@ namespace CampusMidnight
             root.ColumnDefinitions.Clear();
             root.RowDefinitions.Clear();
             navButtons.Clear();
+            railLabels.Clear();
             ColumnDefinition c0 = new ColumnDefinition(); c0.Width = GridLength.Auto;
             ColumnDefinition c1 = new ColumnDefinition(); c1.Width = new GridLength(1, GridUnitType.Star);
             root.ColumnDefinitions.Add(c0); root.ColumnDefinitions.Add(c1);
@@ -419,6 +422,7 @@ namespace CampusMidnight
             nm.Margin = new Thickness(12, 0, 0, 0);
             nm.TextTrimming = TextTrimming.None;
             UI.At(th, nm, 1);
+            railLabels.Add(nm);
             toggle.Content = th;
             toggle.Click += delegate { ToggleRail(); };
             rail.Children.Add(toggle);
@@ -440,6 +444,7 @@ namespace CampusMidnight
                 lb.TextTrimming = TextTrimming.None;
                 lb.VerticalAlignment = VerticalAlignment.Center;
                 UI.At(g, lb, 1);
+                railLabels.Add(lb);
                 b.Content = g;
                 b.Click += delegate { Go(key); };
                 b.ToolTip = n[1];
@@ -485,18 +490,26 @@ namespace CampusMidnight
             Grid.SetColumn(main, 1);
             root.Children.Add(main);
             termButton = termBtn;
+            SetRailLabels();
             ShowView(true);
             UpdateTop();
         }
 
         Button termButton;
 
+        void SetRailLabels()
+        {
+            foreach (UIElement e in railLabels) e.Visibility = cfg.RailCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         void ToggleRail()
         {
             cfg.RailCollapsed = !cfg.RailCollapsed;
             cfg.Save();
+            if (!cfg.RailCollapsed) SetRailLabels();
             DoubleAnimation da = new DoubleAnimation(cfg.RailCollapsed ? 68 : 224, TimeSpan.FromMilliseconds(220));
             da.EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut };
+            if (cfg.RailCollapsed) da.Completed += delegate { SetRailLabels(); };
             sidebar.BeginAnimation(FrameworkElement.WidthProperty, da);
         }
 
