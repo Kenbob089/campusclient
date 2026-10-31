@@ -5,40 +5,35 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type DELETE to confirm'
+        description: "Type DELETE to confirm"
         required: true
         type: string
+
+permissions:
+  contents: write
 
 jobs:
   delete:
     runs-on: ubuntu-latest
+    if: inputs.confirm == 'DELETE'
 
     steps:
-      - name: Confirm deletion
-        if: ${{ inputs.confirm != 'DELETE' }}
-        run: |
-          echo "Confirmation failed."
-          exit 1
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Delete selected files and folders
+      - name: Delete selected items
         run: |
-          rm -rf \
-            src/ \
-            README.txt \
-            app.manifest \
-            build.bat \
-            wrangler.jsonc \
-            wpf/ \
-            app.ico
+          rm -rf -- src wpf
+          rm -f -- README.txt app.manifest build.bat app.ico
 
       - name: Commit deletions
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add -A
-          git diff --cached --quiet || git commit -m "Delete selected files and folders"
-          git push
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Delete selected files and folders"
+            git push
+          else
+            echo "Nothing to delete."
+          fi
