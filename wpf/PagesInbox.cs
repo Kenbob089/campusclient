@@ -1,0 +1,218 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
+using System.Windows;
+using System.Windows.Controls;
+
+namespace CampusMidnight
+{
+    sealed partial class MainWindow
+    {
+        string inboxTab = "message";
+
+        void OpenCampusPage(string page) { OpenCampusWindow(page); }
+
+        // says why a page is empty: the school switched it off, or Campus did not answer on any address this app knows
+        string ModuleNote(string pattern, string what)
+        {
+            bool known = false, on = false;
+            if (snap != null)
+                foreach (KeyValuePair<string, bool> kv in snap.Modules)
+                    if (System.Text.RegularExpressions.Regex.IsMatch(kv.Key, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase)) { known = true; if (kv.Value) on = true; }
+            if (known && !on) return "Your school has turned " + what + " off in the Campus portal, so there is nothing to show here.";
+            if (known && on) return "Campus says " + what + " are switched on for your school, but it did not hand any over to this app. Open Campus to see them there; Diagnostics > Copy report shows what was tried.";
+            return "No " + what + " came through. Campus may keep them somewhere this app can't reach yet. Open Campus to see them there; Diagnostics > Copy report shows what was tried.";
+        }
+
+        ItemSpec MsgRow(Msg m)
+        {
+            ItemSpec it = new ItemSpec();
+            it.Title = m.Subject.Length > 0 ? m.Subject : "(no subject)";
+            string prev = m.Body.Replace("\n", " ").Replace("\r", " ");
+            if (prev.Length > 110) prev = prev.Substring(0, 110) + "…";
+            string sub = m.From;
+            if (prev.Length > 0) sub += (sub.Length > 0 ? "  ·  " : "") + prev;
+            it.Sub = sub;
+            it.Dot = !m.Read;
+            if (m.Date.HasValue) { it.Right = Rows.DayLabel(m.Date.Value); it.RightFg = "T3"; }
+            if (m.Kind == "notice") { it.Badge = "Announcement"; it.BadgeBg = "AccSoft"; it.BadgeFg = "AccText"; }
+            Msg mm = m;
+            it.Click = delegate { OpenMessage(mm); };
+            return it;
+        }
+
+        UIElement PageInbox()
+        {
+            List<UIElement> kids = new List<UIElement>();
+            string[] keys = new string[] { "message", "notice" };
+            string[] names = new string[] { "Messages (" + snap.Messages.Count + ")", "Announcements (" + snap.Notices.Count + ")" };
+            kids.Add(SegBar(names, inboxTab == "notice" ? 1 : 0, delegate(int k)
+            {
+                inboxTab = keys[k];
+                Dispatcher.BeginInvoke(new Action(delegate { ShowView(false); }));
+            }));
+            List<Msg> list = inboxTab == "notice" ? snap.Notices : snap.Messages;
+            if (list.Count == 0)
+            {
+                kids.Add(PageKit.Notice(ModuleNote(inboxTab == "notice" ? "notice|announce" : "messag|inbox|messenger",
+                    inboxTab == "notice" ? "announcements" : "messages"), false));
+                Button open = UI.Btn("Open in Campus", "Pill", delegate { OpenCampusPage("message-center"); });
+                open.HorizontalAlignment = HorizontalAlignment.Left;
+                kids.Add(open);
+                return Body(kids.ToArray());
+            }
+            int unread = 0;
+            foreach (Msg m in list) if (!m.Read) unread++;
+            List<ItemSpec> rows = new List<ItemSpec>();
+            for (int i = 0; i < list.Count && i < 200; i++) rows.Add(MsgRow(list[i]));
+            kids.Add(PageKit.ListCard(list.Count + (list.Count == 1 ? " item" : " items") + (unread > 0 ? "  ·  " + unread + " unread" : ""), "", rows));
+            return Body(kids.ToArray());
+        }
+
+        UIElement PageDocs()
+        {
+            List<UIElement> kids = new List<UIElement>();
+            if (snap.Docs.Count == 0)
+            {
+                kids.Add(PageKit.Notice(ModuleNote("document", "documents"), false));
+                Button open = UI.Btn("Open in Campus", "Pill", delegate { OpenCampusPage("documents"); });
+                open.HorizontalAlignment = HorizontalAlignment.Left;
+                kids.Add(open);
+                return Body(kids.ToArray());
+            }
+            List<ItemSpec> rows = new List<ItemSpec>();
+            foreach (Doc d in snap.Docs)
+            {
+                ItemSpec it = new ItemSpec();
+                it.Title = d.Name;
+                string[] kind = DocKind(d);
+                it.Icon = kind[1];
+                string sub = kind[0];
+                if (d.Date.HasValue) sub += (sub.Length > 0 ? "  ·  " : "") + d.Date.Value.ToString("MMM d, yyyy");
+                it.Sub = sub;
+                Doc dd = d;
+                it.Click = delegate { OpenDoc(dd); };
+                rows.Add(it);
+            }
+            kids.Add(PageKit.ListCard(snap.Docs.Count + (snap.Docs.Count == 1 ? " document" : " documents") + "  ·  click to open", "", rows));
+            return Body(kids.ToArray());
+        }
+
+        void OpenMessage(Msg m)
+        {
+            StackPanel p = new StackPanel();
+            p.Children.Add(UI.Text(m.Kind == "notice" ? "ANNOUNCEMENT" : "MESSAGE", 11.5, "AccText", true));
+            p.Children.Add(UI.Margin(UI.Wrap(m.Subject.Length > 0 ? m.Subject : "(no subject)", 22, "T1"), 0, 4, 0, 4));
+            string meta = m.From;
+            if (m.Date.HasValue) meta += (meta.Length > 0 ? "  ·  " : "") + m.Date.Value.ToString("dddd, MMMM d, yyyy");
+            if (meta.Length > 0) p.Children.Add(UI.Margin(UI.Wrap(meta, 13.5, "T2"), 0, 0, 0, 14));
+            ContentControl bodyHost = new ContentControl();
+            bool fetchBody = m.Kind == "message" && m.Body.Length == 0 && api != null && m.Id.Length > 0;
+            bodyHost.Content = TextCardUi("", m.Body.Length > 0 ? m.Body : (fetchBody ? "Loading the message…" : "This message has no text."), m.Body.Length == 0);
+            p.Children.Add(bodyHost);
+            if (fetchBody)
+            {
+                Api a0 = api;
+                string mid = m.Id, rid0 = m.RecipientId, cid = m.ContextId, murl = m.Url;
+                ThreadPool.QueueUserWorkItem(delegate(object st0)
+                {
+                    string got = "";
+                    try { got = a0.MessageBody(mid, rid0, cid, murl); } catch (Exception) { }
+                    Dispatcher.BeginInvoke(new Action(async delegate
+                    {
+                        if (got.Length == 0)
+                        {
+                            try { got = await WebMessageBody(m); } catch (Exception) { got = ""; }
+                        }
+                        if (got.Length > 0) { m.Body = got; bodyHost.Content = TextCardUi("", got, false); }
+                        else bodyHost.Content = TextCardUi("", "Campus would not hand over the text of this message. Use Open in Campus to read it.", true);
+                    }));
+                });
+            }
+            StackPanel btns = new StackPanel();
+            btns.Orientation = Orientation.Horizontal;
+            btns.Margin = new Thickness(0, 8, 0, 0);
+            string own = api != null && m.Kind == "message" ? api.MessagePath(m.Url) : "";
+            // Campus' own link when it gave one; otherwise the message centre, where the message can be opened by hand
+            string viewPath = own.Length > 0 ? own : "message-center";
+            Button open = UI.Btn("Open in Campus", "Pill", delegate { OpenCampusPage(viewPath); });
+            Button copy = UI.Btn("Copy text", "Ghost", null);
+            copy.Margin = new Thickness(10, 0, 0, 0);
+            copy.Click += delegate
+            {
+                try { Clipboard.SetText(m.Body); copy.Content = "Copied"; }
+                catch (Exception) { copy.Content = "Could not copy"; }
+            };
+            btns.Children.Add(open);
+            btns.Children.Add(copy);
+            p.Children.Add(btns);
+            bool wasUnread = !m.Read;
+            if (wasUnread) { m.Read = true; UpdateBadges(); }
+            NewWindow(m.Subject.Length > 0 ? m.Subject : "Message", p, 640, 640).ShowDialog();
+            if (wasUnread && view == "inbox") ShowView(false);
+        }
+
+        // what kind of file this is: { a plain name, an icon glyph }, from the file name first and then the type Campus gives
+        static string[] DocKind(Doc d)
+        {
+            string ext = "";
+            try { ext = System.IO.Path.GetExtension(d.Name ?? "").TrimStart('.').ToLowerInvariant(); } catch (Exception) { }
+            if (ext.Length == 0 || ext.Length > 5) ext = (d.Type ?? "").ToLowerInvariant();
+            if (ext.Contains("pdf")) return new string[] { "PDF document", "\uE8A5" };
+            if (ext.Contains("doc") || ext.Contains("word") || ext == "rtf" || ext == "odt") return new string[] { "Word document", "\uE8A5" };
+            if (ext.Contains("xls") || ext.Contains("sheet") || ext == "csv" || ext == "ods") return new string[] { ext == "csv" ? "CSV spreadsheet" : "Excel spreadsheet", "\uE9D9" };
+            if (ext.Contains("ppt") || ext.Contains("presentation") || ext == "odp") return new string[] { "PowerPoint slides", "\uE8A5" };
+            if (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "gif" || ext == "bmp" || ext == "webp" || ext.Contains("image")) return new string[] { "Image (" + ext.ToUpperInvariant().Replace("IMAGE/", "") + ")", "\uE91B" };
+            if (ext == "mp4" || ext == "mov" || ext == "avi" || ext == "mkv" || ext.Contains("video")) return new string[] { "Video", "\uE714" };
+            if (ext == "mp3" || ext == "wav" || ext == "m4a" || ext.Contains("audio")) return new string[] { "Audio", "\uE8D6" };
+            if (ext == "zip" || ext == "rar" || ext == "7z") return new string[] { "Zip folder", "\uE8B7" };
+            if (ext == "txt" || ext.Contains("text/plain")) return new string[] { "Text file", "\uE8A5" };
+            if (ext == "htm" || ext == "html" || ext.Contains("html")) return new string[] { "Web page", "\uE774" };
+            return new string[] { string.IsNullOrEmpty(d.Type) ? "Document" : d.Type, "\uE8A5" };
+        }
+
+        void OpenDoc(Doc d)
+        {
+            if (api == null) return;
+            if (d.Url.Length == 0) { OpenCampusPage("documents"); return; }
+            // opens inside the same Campus web window the links use (signed in already)
+            if (!api.IsDemo)
+            {
+                string path = d.Url;
+                Uri full;
+                if (Uri.TryCreate(path, UriKind.Absolute, out full) && (full.Scheme == "http" || full.Scheme == "https"))
+                {
+                    if (string.Equals(full.Host, new Uri(api.Origin).Host, StringComparison.OrdinalIgnoreCase)) path = full.PathAndQuery;
+                    else path = null;
+                }
+                else if (!path.StartsWith("/")) path = "/campus/" + path;
+                if (path != null) { OpenCampusPage(path); return; }
+            }
+            Api a = api;
+            stampText = "Opening " + d.Name + "…";
+            stampBad = false;
+            UpdateTop();
+            ThreadPool.QueueUserWorkItem(delegate(object state)
+            {
+                string file = a.Download(d.Url, d.Name);
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (file != null)
+                    {
+                        try
+                        {
+                            ProcessStartInfo psi = new ProcessStartInfo(file);
+                            psi.UseShellExecute = true;
+                            Process.Start(psi);
+                            stampText = snap != null ? "Updated " + snap.At.ToString("h:mm tt") : "";
+                        }
+                        catch (Exception) { stampText = "Could not open that file."; stampBad = true; }
+                    }
+                    else { stampText = "Could not download that document."; stampBad = true; }
+                    UpdateTop();
+                }));
+            });
+        }
+    }
+}
