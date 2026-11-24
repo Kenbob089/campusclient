@@ -23,6 +23,13 @@ jobs:
       - name: Publish one self-contained exe (no .NET install needed to run it)
         run: dotnet publish wpf/CampusMidnight.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist-wpf
 
+      - name: Write version.txt and changelog.txt (the installer and the in-app updater read these)
+        shell: pwsh
+        run: |
+          $v = (Select-Xml -Path wpf/CampusMidnight.csproj -XPath '//Version').Node.InnerText.Trim()
+          Set-Content -Path dist-wpf/version.txt -Value $v -NoNewline
+          Copy-Item wpf/CHANGELOG.txt dist-wpf/changelog.txt
+
       - name: Keep the exe as a build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -37,4 +44,6 @@ jobs:
           gh release delete wpf-latest --yes --cleanup-tag 2>$null
           $global:LASTEXITCODE = 0
           $exe = (Get-ChildItem dist-wpf -Filter *.exe | Select-Object -First 1).FullName
-          gh release create wpf-latest $exe --title "Noctua (WPF preview build)" --notes "New WPF version. Self-contained, no .NET install needed. Uses the same settings as the WinForms app."
+          $ver = Join-Path (Split-Path $exe) "version.txt"
+          $log = Join-Path (Split-Path $exe) "changelog.txt"
+          gh release create wpf-latest $exe $ver $log --title "Noctua (WPF preview build)" --notes "New WPF version. Self-contained, no .NET install needed. Uses the same settings as the WinForms app."
